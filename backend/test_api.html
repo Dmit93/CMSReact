@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест API магазина</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Тестирование API магазина</h1>
+    
+    <h2>Создание товара</h2>
+    <form id="createProductForm">
+        <div class="form-group">
+            <label for="title">Название товара:</label>
+            <input type="text" id="title" name="title" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="sku">SKU:</label>
+            <input type="text" id="sku" name="sku" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="price">Цена:</label>
+            <input type="number" id="price" name="price" step="0.01" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="stock">Количество на складе:</label>
+            <input type="number" id="stock" name="stock" value="0">
+        </div>
+        
+        <div class="form-group">
+            <label for="status">Статус:</label>
+            <select id="status" name="status">
+                <option value="published">Опубликован</option>
+                <option value="draft">Черновик</option>
+                <option value="archived">Архив</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="description">Описание:</label>
+            <textarea id="description" name="description" rows="4"></textarea>
+        </div>
+        
+        <button type="submit">Создать товар</button>
+    </form>
+    
+    <h3>Результат:</h3>
+    <div id="result">Здесь будет отображен результат запроса...</div>
+    
+    <script>
+        document.getElementById('createProductForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            // Собираем данные формы
+            const formData = {
+                title: document.getElementById('title').value,
+                sku: document.getElementById('sku').value,
+                price: parseFloat(document.getElementById('price').value),
+                stock: parseInt(document.getElementById('stock').value),
+                status: document.getElementById('status').value,
+                description: document.getElementById('description').value
+            };
+            
+            // Генерируем случайный SKU, если не введен
+            if (!formData.sku) {
+                formData.sku = 'TEST-' + Math.floor(Math.random() * 10000);
+                document.getElementById('sku').value = formData.sku;
+            }
+            
+            // Отображаем данные, отправляемые на сервер
+            document.getElementById('result').textContent = 'Отправка данных: ' + JSON.stringify(formData, null, 2);
+            
+            // Отправляем запрос
+            fetch('/api/shop/products', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Ошибка HTTP: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('result').textContent = 'Ответ сервера: ' + JSON.stringify(data, null, 2);
+            })
+            .catch(error => {
+                document.getElementById('result').textContent = 'Ошибка: ' + error.message;
+                
+                // Попробуем с абсолютным URL
+                document.getElementById('result').textContent += '\n\nПробуем с абсолютным URL...';
+                
+                fetch('http://localhost/cms/backend/api/shop/products', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка HTTP (абсолютный URL): ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('result').textContent += '\nОтвет сервера (абсолютный URL): ' + JSON.stringify(data, null, 2);
+                })
+                .catch(error2 => {
+                    document.getElementById('result').textContent += '\nОшибка (абсолютный URL): ' + error2.message;
+                });
+            });
+        });
+        
+        // Заполняем форму случайными данными
+        document.addEventListener('DOMContentLoaded', function() {
+            const timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
+            document.getElementById('title').value = 'Тестовый товар ' + timestamp;
+            document.getElementById('sku').value = 'TEST-' + Math.floor(Math.random() * 10000);
+            document.getElementById('price').value = '99.99';
+            document.getElementById('stock').value = '10';
+            document.getElementById('description').value = 'Описание тестового товара, созданного через HTML-форму';
+        });
+    </script>
+</body>
+</html> 

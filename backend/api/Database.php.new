@@ -1,0 +1,48 @@
+<?php
+
+namespace API;
+
+class Database {
+    private static $instance = null;
+    private $connection;
+    private $config;
+    
+    public function __construct($config) {
+        $this->config = $config;
+        
+        try {
+            // Формируем DSN
+            $dsn = "mysql:host={$config['host']};dbname={$config['database']}";
+            
+            // Добавляем charset
+            if (isset($config['charset'])) {
+                $dsn .= ";charset={$config['charset']}";
+            }
+            
+            // Создаем соединение
+            $this->connection = new \PDO($dsn, $config['username'], $config['password'], $config['options']);
+            
+            // Явно устанавливаем кодировку
+            $this->connection->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+        } catch (\PDOException $e) {
+            error_log("Database connection error: " . $e->getMessage());
+            throw new \Exception("Ошибка подключения к базе данных: " . $e->getMessage());
+        }
+    }
+    
+    public static function getInstance() {
+        if (self::$instance === null) {
+            // Загружаем конфигурацию
+            $config = require __DIR__ . '/../config/database.php';
+            
+            // Создаем экземпляр класса
+            self::$instance = new self($config);
+        }
+        
+        return self::$instance;
+    }
+
+    public function getConnection() {
+        return $this->connection;
+    }
+}

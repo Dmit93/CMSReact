@@ -1,0 +1,74 @@
+# Включаем перезапись URL
+RewriteEngine On
+
+# Установка базового пути
+RewriteBase /cms/
+
+# Перенаправление админки на React-приложение
+RewriteRule ^admin$ admin/ [R=301,L]
+RewriteRule ^admin/(.*)$ public/$1 [L]
+
+# Обработка API-запросов 
+RewriteRule ^api/(.*)$ backend/api/$1 [L]
+
+# Обработка ресурсов тем (CSS, JS, изображения)
+RewriteRule ^themes/([^/]+)/assets/(.*)$ backend/themes/$1/assets/$2 [L]
+
+# Предпросмотр тем через параметр
+RewriteRule ^preview/([^/]+)$ index.php?preview_theme=$1 [L,QSA]
+
+# Не применять правила для существующих файлов и директорий
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Остальные запросы направляем на index.php
+RewriteRule . index.php [L]
+
+# Запрет доступа к директориям
+<FilesMatch "^\.(htaccess|htpasswd)$">
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+
+# Запрет доступа к скрытым файлам и директориям
+<IfModule mod_rewrite.c>
+    RewriteCond %{SCRIPT_FILENAME} -d [OR]
+    RewriteCond %{SCRIPT_FILENAME} -f
+    RewriteRule "(^|/)\." - [F]
+</IfModule>
+
+# Правила кэширования статических файлов
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/pdf "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType application/x-javascript "access plus 1 month"
+    ExpiresByType application/x-shockwave-flash "access plus 1 month"
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresDefault "access plus 2 days"
+</IfModule>
+
+# Обработка CORS для всех запросов
+<IfModule mod_headers.c>
+    # Разрешаем доступ с localhost:5173
+    SetEnvIf Origin "http://localhost:5173" AccessControlAllowOrigin=$0
+    Header add Access-Control-Allow-Origin %{AccessControlAllowOrigin}e env=AccessControlAllowOrigin
+    
+    # Разрешенные методы и заголовки
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    Header always set Access-Control-Allow-Credentials "true"
+    
+    # Если это предварительный запрос OPTIONS, возвращаем сразу 200 OK
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ $1 [R=200,L]
+</IfModule>
+
+# Перенаправление запросов к API
+RewriteRule ^backend/api/(.*)$ backend/api/index.php [QSA,L] 

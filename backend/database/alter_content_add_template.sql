@@ -1,0 +1,2 @@
+-- Добавление поля template_name в таблицу content для привязки записей к шаблонам
+ALTER TABLE `content` ADD COLUMN `template_name` VARCHAR(255) NULL DEFAULT NULL COMMENT 'Имя шаблона темы для отображения контента' AFTER `custom_fields`; 

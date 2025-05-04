@@ -1,0 +1,20 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Описание базового модуля Core
+ */
+return [
+    'id' => 'core',
+    'name' => 'Core Module',
+    'description' => 'Базовый модуль системы, предоставляющий основные функции и API',
+    'version' => '1.0.0',
+    'author' => 'Universal CMS Team',
+    'author_url' => 'https://example.com',
+    'dependencies' => [], // базовый модуль без зависимостей
+    'config' => [
+        'debug' => false,
+        'cache_enabled' => true,
+        'cache_ttl' => 3600
+    ]
+];

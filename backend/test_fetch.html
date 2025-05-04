@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест прямого запроса к API</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        pre { background-color: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        button { padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer; margin: 10px 0; }
+        button:hover { background-color: #45a049; }
+    </style>
+</head>
+<body>
+    <h1>Тестирование прямого запроса к API</h1>
+    
+    <div>
+        <h2>Тестовые данные:</h2>
+        <pre id="testData"></pre>
+        
+        <button id="testDirectBtn">Отправить запрос напрямую</button>
+        <button id="testProxyBtn">Отправить запрос через прокси</button>
+        
+        <h2>Результат:</h2>
+        <pre id="result">Ожидание запроса...</pre>
+    </div>
+    
+    <script>
+        // Тестовые данные товара
+        const testData = {
+            title: `Тестовый товар ${new Date().toISOString()}`,
+            sku: `TEST-${Math.floor(Math.random() * 10000)}`,
+            price: 99.99,
+            stock: 10,
+            status: 'published',
+            description: 'Тестовый товар для проверки API'
+        };
+        
+        // Отображаем тестовые данные
+        document.getElementById('testData').textContent = JSON.stringify(testData, null, 2);
+        
+        // Обработчик для прямого запроса
+        document.getElementById('testDirectBtn').addEventListener('click', async () => {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Отправка запроса напрямую к http://localhost/cms/backend/api/shop/products...';
+            
+            try {
+                const response = await fetch('http://localhost/cms/backend/api/shop/products', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(testData)
+                });
+                
+                const responseText = await response.text();
+                
+                try {
+                    // Пробуем распарсить как JSON
+                    const responseData = JSON.parse(responseText);
+                    resultEl.textContent = `Статус: ${response.status}\n\nОтвет:\n${JSON.stringify(responseData, null, 2)}`;
+                } catch (e) {
+                    // Выводим как текст, если не JSON
+                    resultEl.textContent = `Статус: ${response.status}\n\nОтвет:\n${responseText}`;
+                }
+            } catch (error) {
+                resultEl.textContent = `Ошибка: ${error.message}`;
+            }
+        });
+        
+        // Обработчик для запроса через прокси
+        document.getElementById('testProxyBtn').addEventListener('click', async () => {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Отправка запроса через прокси к /api/shop/products...';
+            
+            try {
+                const response = await fetch('/api/shop/products', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(testData)
+                });
+                
+                const responseText = await response.text();
+                
+                try {
+                    // Пробуем распарсить как JSON
+                    const responseData = JSON.parse(responseText);
+                    resultEl.textContent = `Статус: ${response.status}\n\nОтвет:\n${JSON.stringify(responseData, null, 2)}`;
+                } catch (e) {
+                    // Выводим как текст, если не JSON
+                    resultEl.textContent = `Статус: ${response.status}\n\nОтвет:\n${responseText}`;
+                }
+            } catch (error) {
+                resultEl.textContent = `Ошибка: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html> 

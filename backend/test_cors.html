@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест CORS Proxy</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { color: #333; }
+        .panel { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        textarea, input { width: 100%; padding: 8px; box-sizing: border-box; margin-bottom: 10px; }
+        button { padding: 10px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+        button:hover { background-color: #45a049; }
+        pre { background-color: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Тестирование CORS Proxy для API магазина</h1>
+    
+    <div class="panel">
+        <h2>Данные товара</h2>
+        <textarea id="productData" rows="10" cols="50">{
+  "title": "Тестовый товар CORS",
+  "sku": "TEST-CORS-1",
+  "price": 99.99,
+  "stock": 10,
+  "status": "published",
+  "description": "Тестовый товар для проверки CORS Proxy"
+}</textarea>
+    </div>
+    
+    <div class="panel">
+        <h2>Тесты</h2>
+        <button id="btnDirectAPI">Отправить напрямую в API</button>
+        <button id="btnCorsProxy">Отправить через CORS Proxy</button>
+        <button id="btnCorsHeader">Отправить с Origin заголовком</button>
+        <button id="btnCredsAPI">Отправить с credentials</button>
+    </div>
+    
+    <div class="panel">
+        <h2>Результат</h2>
+        <pre id="result">Ожидание запуска теста...</pre>
+    </div>
+    
+    <script>
+        document.getElementById('btnDirectAPI').addEventListener('click', function() {
+            sendRequest('http://localhost/cms/backend/api/shop/products', false);
+        });
+        
+        document.getElementById('btnCorsProxy').addEventListener('click', function() {
+            sendRequest('http://localhost/cms/backend/api/cors_proxy.php/shop/products', false);
+        });
+        
+        document.getElementById('btnCorsHeader').addEventListener('click', function() {
+            sendRequest('http://localhost/cms/backend/api/shop/products', false, true);
+        });
+        
+        document.getElementById('btnCredsAPI').addEventListener('click', function() {
+            sendRequest('http://localhost/cms/backend/api/shop/products', true);
+        });
+        
+        function sendRequest(url, withCredentials, withOrigin = false) {
+            try {
+                // Получаем данные
+                const dataStr = document.getElementById('productData').value;
+                let data;
+                
+                try {
+                    data = JSON.parse(dataStr);
+                } catch (e) {
+                    document.getElementById('result').innerHTML = `<span class="error">Ошибка при разборе JSON: ${e.message}</span>`;
+                    return;
+                }
+                
+                // Генерируем случайный SKU для предотвращения конфликтов
+                data.sku = `TEST-CORS-${Math.floor(Math.random() * 10000)}`;
+                
+                // Обновляем textarea с новым SKU
+                document.getElementById('productData').value = JSON.stringify(data, null, 2);
+                
+                // Подготавливаем заголовки
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                
+                if (withOrigin) {
+                    headers['Origin'] = 'http://localhost:5173';
+                }
+                
+                document.getElementById('result').textContent = `Отправка запроса на ${url}...\n\nДанные: ${JSON.stringify(data, null, 2)}`;
+                
+                // Отправляем запрос
+                fetch(url, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(data),
+                    credentials: withCredentials ? 'include' : 'same-origin'
+                })
+                .then(response => {
+                    const statusInfo = `Статус: ${response.status} ${response.statusText}`;
+                    document.getElementById('result').textContent += `\n\n${statusInfo}`;
+                    
+                    return response.text().then(text => {
+                        try {
+                            return JSON.parse(text);
+                        } catch (e) {
+                            return text;
+                        }
+                    });
+                })
+                .then(data => {
+                    const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+                    document.getElementById('result').textContent += `\n\nОтвет:\n${dataStr}`;
+                    
+                    if (typeof data === 'object' && data.success) {
+                        document.getElementById('result').innerHTML += `\n\n<span class="success">✓ Запрос успешно выполнен!</span>`;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('result').innerHTML += `\n\n<span class="error">Ошибка: ${error.message}</span>`;
+                    
+                    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                        document.getElementById('result').innerHTML += `\n<span class="error">Возможная причина: CORS ошибка или сервер недоступен</span>`;
+                    }
+                });
+                
+            } catch (e) {
+                document.getElementById('result').innerHTML = `<span class="error">Неожиданная ошибка: ${e.message}</span>`;
+            }
+        }
+        
+        // Генерируем случайный SKU при загрузке страницы
+        window.addEventListener('load', function() {
+            try {
+                const dataStr = document.getElementById('productData').value;
+                const data = JSON.parse(dataStr);
+                data.sku = `TEST-CORS-${Math.floor(Math.random() * 10000)}`;
+                document.getElementById('productData').value = JSON.stringify(data, null, 2);
+            } catch (e) {
+                console.error('Ошибка при инициализации данных:', e);
+            }
+        });
+    </script>
+</body>
+</html> 

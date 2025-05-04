@@ -1,0 +1,18 @@
+{
+    "title": "Стандартная тема",
+    "description": "Базовая тема для CMS системы с адаптивным дизайном",
+    "version": "1.0.0",
+    "author": "CMS Team",
+    "supports": {
+        "contentTypes": true,
+        "customFields": true,
+        "widgets": true,
+        "comments": true
+    },
+    "templates": {
+        "index": "Главная страница",
+        "content_type": "Страница типа контента",
+        "content_item": "Страница отдельной записи",
+        "404": "Страница 404"
+    }
+} 
