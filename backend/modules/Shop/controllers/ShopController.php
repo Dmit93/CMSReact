@@ -147,45 +147,134 @@ class ShopController {
      * Создание товара
      */
     public function createProduct(Request $request = null) {
+        // Включаем отслеживание ошибок
+        ini_set('display_errors', 1);
+        error_reporting(E_ALL);
+        
         // Диагностический вывод для отладки
         error_log("ShopController::createProduct - начало выполнения метода");
-        error_log("Тип Request: " . (is_object($request) ? get_class($request) : gettype($request)));
-        
-        // Создаем объект Request, если он не был передан
-        if ($request === null) {
-            $request = new Request();
-            error_log("ShopController::createProduct создан новый объект Request");
-        }
-        
-        // Получаем данные из запроса
-        $data = $request->getJson();
-        error_log("ShopController::createProduct получены данные: " . json_encode($data));
-        
-        // Проверка наличия данных
-        if (!$data || empty($data)) {
-            error_log("ShopController::createProduct - пустые данные");
-            return Response::error('Пустые данные товара', 400);
-        }
-        
-        // Проверка обязательных полей
-        $requiredFields = ['title', 'sku', 'price'];
-        $missingFields = [];
-        
-        foreach ($requiredFields as $field) {
-            if (!isset($data[$field]) || empty($data[$field])) {
-                $missingFields[] = $field;
-            }
-        }
-        
-        if (!empty($missingFields)) {
-            $errorMsg = 'Отсутствуют обязательные поля: ' . implode(', ', $missingFields);
-            error_log("ShopController::createProduct - " . $errorMsg);
-            return Response::error($errorMsg, 400);
-        }
         
         try {
+            // Создаем объект Request, если он не был передан
+            if ($request === null) {
+                $request = new Request();
+                error_log("ShopController::createProduct создан новый объект Request");
+            }
+            
+            // ДИАГНОСТИКА: Проверяем соединение с базой данных
+            try {
+                $dbTest = $this->db->fetch("SELECT VERSION() as version");
+                error_log("Соединение с БД работает. Версия MySQL: " . ($dbTest['version'] ?? 'unknown'));
+            } catch (\Exception $e) {
+                error_log("ОШИБКА: Проблема с соединением БД: " . $e->getMessage());
+            }
+            
+            // Получаем данные из запроса напрямую из php://input
+            $rawData = file_get_contents('php://input');
+            error_log("ShopController::createProduct - сырые данные запроса: " . $rawData);
+            
+            // Пробуем декодировать JSON сами, без использования метода getJson
+            $data = json_decode($rawData, true);
+            if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+                error_log("ShopController::createProduct - ошибка декодирования JSON: " . json_last_error_msg());
+                
+                // Пробуем получить данные с помощью getJson
+                $data = $request->getJson();
+                error_log("ShopController::createProduct - данные из getJson: " . json_encode($data));
+                
+                // Если данные все еще пусты, попробуем получить их из POST
+                if (empty($data) && !empty($_POST)) {
+                    error_log("ShopController::createProduct - используем данные из $_POST");
+                    $data = $_POST;
+                }
+            } else {
+                error_log("ShopController::createProduct - JSON данные успешно декодированы напрямую");
+            }
+            
+            // Проверка наличия данных
+            if (empty($data)) {
+                error_log("ShopController::createProduct - пустые данные");
+                return Response::error('Пустые данные товара', 400);
+            }
+            
+            // Проверяем структуру таблицы products
+            try {
+                $tableInfo = $this->db->fetchAll("SHOW CREATE TABLE products");
+                error_log("Структура таблицы products: " . json_encode($tableInfo));
+                
+                $columns = $this->db->fetchAll("SHOW COLUMNS FROM products");
+                error_log("Колонки таблицы products: " . json_encode($columns));
+                
+                // Преобразуем информацию о колонках в более удобный формат
+                $columnInfo = [];
+                foreach ($columns as $column) {
+                    $columnInfo[$column['Field']] = [
+                        'type' => $column['Type'],
+                        'null' => $column['Null'],
+                        'key' => $column['Key'],
+                        'default' => $column['Default'],
+                        'extra' => $column['Extra']
+                    ];
+                }
+                
+                error_log("Информация о колонках: " . json_encode($columnInfo));
+            } catch (\Exception $e) {
+                error_log("Ошибка при получении структуры таблицы: " . $e->getMessage());
+            }
+            
+            // Базовые обязательные поля
+            $requiredFields = ['title', 'price'];
+            
+            // Проверяем обязательные поля из структуры таблицы
+            foreach ($columnInfo as $field => $info) {
+                if ($info['null'] === 'NO' && $info['default'] === null && $field !== 'id') {
+                    if (!in_array($field, $requiredFields)) {
+                        $requiredFields[] = $field;
+                    }
+                }
+            }
+            
+            error_log("Обязательные поля: " . json_encode($requiredFields));
+            
+            // Проверка обязательных полей
+            $missingFields = [];
+            foreach ($requiredFields as $field) {
+                if (!isset($data[$field]) || (empty($data[$field]) && $data[$field] !== 0 && $data[$field] !== '0')) {
+                    $missingFields[] = $field;
+                }
+            }
+            
+            // Если отсутствуют обязательные поля, добавляем значения по умолчанию или возвращаем ошибку
+            if (!empty($missingFields)) {
+                error_log("Отсутствуют обязательные поля: " . json_encode($missingFields));
+                
+                // Добавляем значения по умолчанию для некоторых полей
+                foreach ($missingFields as $key => $field) {
+                    if ($field === 'slug' && isset($data['title'])) {
+                        $data['slug'] = $this->generateSlug($data['title']);
+                        unset($missingFields[$key]);
+                    } elseif ($field === 'author_id') {
+                        $data['author_id'] = 1; // ID по умолчанию для автора
+                        unset($missingFields[$key]);
+                    } elseif ($field === 'status') {
+                        $data['status'] = 'published';
+                        unset($missingFields[$key]);
+                    } elseif ($field === 'created_at' || $field === 'updated_at') {
+                        $data[$field] = date('Y-m-d H:i:s');
+                        unset($missingFields[$key]);
+                    }
+                }
+                
+                // Если все еще остаются отсутствующие поля, возвращаем ошибку
+                if (!empty($missingFields)) {
+                    $errorMsg = 'Отсутствуют обязательные поля: ' . implode(', ', $missingFields);
+                    error_log("ShopController::createProduct - " . $errorMsg);
+                    return Response::error($errorMsg, 400);
+                }
+            }
+            
             // Устанавливаем значения по умолчанию для необязательных полей
-            if (!isset($data['status']) || empty($data['status'])) {
+            if (!isset($data['status'])) {
                 $data['status'] = 'published';
             }
             
@@ -193,36 +282,149 @@ class ShopController {
                 $data['stock'] = 0;
             }
             
-            // Специальная проверка для enum поля status
-            if (isset($data['status']) && !in_array($data['status'], ['draft', 'published', 'archived'])) {
-                error_log("ShopController::createProduct - некорректный статус: {$data['status']}, устанавливаем 'published'");
-                $data['status'] = 'published';
+            if (!isset($data['created_at'])) {
+                $data['created_at'] = date('Y-m-d H:i:s');
             }
             
-            // Создаем товар через модель
-            $result = $this->productModel->create($data);
-            
-            // Проверка результата операции
-            if (!$result || !is_numeric($result)) {
-                error_log("ShopController::createProduct - ошибка создания товара: " . json_encode($result));
-                return Response::error('Ошибка при создании товара', 500);
+            if (!isset($data['updated_at'])) {
+                $data['updated_at'] = date('Y-m-d H:i:s');
             }
             
-            error_log("ShopController::createProduct - товар успешно создан с ID: {$result}");
+            // Преобразуем поля в соответствии с их типами
+            foreach ($data as $field => $value) {
+                if (isset($columnInfo[$field])) {
+                    $type = $columnInfo[$field]['type'];
+                    
+                    // Преобразование для числовых типов
+                    if (strpos($type, 'int') !== false) {
+                        $data[$field] = (int)$value;
+                    } elseif (strpos($type, 'decimal') !== false || strpos($type, 'float') !== false || strpos($type, 'double') !== false) {
+                        $data[$field] = (float)$value;
+                    } elseif (strpos($type, 'enum') !== false) {
+                        // Для enum проверяем допустимые значения
+                        preg_match('/enum\((.*)\)/', $type, $matches);
+                        if (isset($matches[1])) {
+                            $allowedValues = array_map(function($val) {
+                                return trim($val, "'\"");
+                            }, explode(',', $matches[1]));
+                            
+                            if (!in_array($value, $allowedValues)) {
+                                error_log("Значение $value не допустимо для enum $field. Допустимые значения: " . implode(', ', $allowedValues));
+                                $data[$field] = $allowedValues[0]; // Используем первое допустимое значение
+                            }
+                        }
+                    }
+                }
+            }
             
-            // Получаем данные созданного товара
-            $product = $this->productModel->getById($result);
+            error_log("Данные после обработки: " . json_encode($data));
             
-            return Response::json([
-                'success' => true,
-                'message' => 'Товар успешно создан',
-                'data' => $product
-            ]);
+            try {
+                // Сначала проверим, есть ли автоинкремент в поле id
+                $idInfo = $columnInfo['id'] ?? null;
+                $hasAutoIncrement = $idInfo && strpos($idInfo['extra'], 'auto_increment') !== false;
+                
+                if (!$hasAutoIncrement) {
+                    error_log("ВНИМАНИЕ: Поле id не имеет AUTO_INCREMENT");
+                    
+                    // Если нет AUTO_INCREMENT, нужно найти максимальное id и увеличить его
+                    if (!isset($data['id'])) {
+                        $maxId = $this->db->fetch("SELECT MAX(id) as max_id FROM products");
+                        $nextId = isset($maxId['max_id']) ? ((int)$maxId['max_id'] + 1) : 1;
+                        $data['id'] = $nextId;
+                        error_log("Назначаем ID вручную: " . $nextId);
+                    }
+                } else if (isset($data['id'])) {
+                    // Если есть AUTO_INCREMENT, но ID передан - удаляем его
+                    error_log("Удаляем переданный ID, так как таблица использует AUTO_INCREMENT");
+                    unset($data['id']);
+                }
+                
+                // Подготавливаем SQL-запрос
+                $columns = array_keys($data);
+                $placeholders = array_fill(0, count($columns), '?');
+                
+                $sql = "INSERT INTO products (`" . implode('`, `', $columns) . "`) VALUES (" . implode(', ', $placeholders) . ")";
+                error_log("SQL запрос: " . $sql);
+                error_log("Значения: " . json_encode(array_values($data)));
+                
+                // Выполняем запрос
+                $values = array_values($data);
+                $this->db->query($sql, $values);
+                
+                // Получаем ID вставленной записи
+                if ($hasAutoIncrement) {
+                    $productId = $this->db->getConnection()->lastInsertId();
+                } else {
+                    $productId = $data['id'];
+                }
+                
+                if (!$productId) {
+                    error_log("Ошибка: Не удалось получить ID созданного товара");
+                    return Response::error('Ошибка при создании товара: не удалось получить ID', 500);
+                }
+                
+                error_log("Товар успешно создан с ID: " . $productId);
+                
+                // Получаем данные созданного товара
+                $product = $this->db->fetch("SELECT * FROM products WHERE id = ?", [$productId]);
+                
+                return Response::json([
+                    'success' => true,
+                    'message' => 'Товар успешно создан',
+                    'data' => $product
+                ]);
+            } catch (\Exception $e) {
+                error_log("Исключение при вставке записи: " . $e->getMessage());
+                error_log("Трассировка: " . $e->getTraceAsString());
+                return Response::error('Ошибка при создании товара в базе данных: ' . $e->getMessage(), 500);
+            }
         } catch (\Exception $e) {
-            error_log("ShopController::createProduct - исключение: " . $e->getMessage());
-            error_log("ShopController::createProduct - trace: " . $e->getTraceAsString());
-            return Response::error('Ошибка при создании товара: ' . $e->getMessage(), 500);
+            error_log("Общее исключение в ShopController::createProduct: " . $e->getMessage());
+            error_log("Трассировка: " . $e->getTraceAsString());
+            return Response::error('Ошибка при обработке запроса: ' . $e->getMessage(), 500);
         }
+    }
+    
+    /**
+     * Генерация slug из заголовка
+     */
+    private function generateSlug($title) {
+        // Приводим к нижнему регистру
+        $slug = mb_strtolower($title);
+        
+        // Заменяем кириллицу на латиницу
+        $slug = $this->transliterate($slug);
+        
+        // Заменяем все символы, кроме букв и цифр, на дефисы
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+        
+        // Удаляем начальные и конечные дефисы
+        $slug = trim($slug, '-');
+        
+        // Если slug пустой, используем timestamp
+        if (empty($slug)) {
+            $slug = 'product-' . time();
+        }
+        
+        return $slug;
+    }
+    
+    /**
+     * Транслитерация кириллицы
+     */
+    private function transliterate($string) {
+        $converter = [
+            'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'g', 'д' => 'd',
+            'е' => 'e', 'ё' => 'e', 'ж' => 'zh', 'з' => 'z', 'и' => 'i',
+            'й' => 'y', 'к' => 'k', 'л' => 'l', 'м' => 'm', 'н' => 'n',
+            'о' => 'o', 'п' => 'p', 'р' => 'r', 'с' => 's', 'т' => 't',
+            'у' => 'u', 'ф' => 'f', 'х' => 'h', 'ц' => 'c', 'ч' => 'ch',
+            'ш' => 'sh', 'щ' => 'sch', 'ъ' => '', 'ы' => 'y', 'ь' => '',
+            'э' => 'e', 'ю' => 'yu', 'я' => 'ya'
+        ];
+        
+        return strtr($string, $converter);
     }
     
     /**
@@ -510,6 +712,9 @@ class ShopController {
         $data = $request->getJson();
         
         try {
+            // Логирование входящих данных для отладки
+            error_log("ShopController::updateCategory - ID: {$id}, данные: " . json_encode($data, JSON_UNESCAPED_UNICODE));
+            
             // Проверка существования категории
             $checkQuery = "SELECT id FROM product_categories WHERE id = ? LIMIT 1";
             $existing = $this->db->fetch($checkQuery, [$id]);
@@ -528,11 +733,21 @@ class ShopController {
                 }
             }
             
+            // Обработка image (ранее было image_id)
+            if (isset($data['image']) && is_array($data['image'])) {
+                // Если передан массив, берем только URL изображения
+                if (isset($data['image']['url'])) {
+                    $data['image'] = $data['image']['url'];
+                } else {
+                    $data['image'] = null;
+                }
+            }
+            
             // Добавление метки времени
             $data['updated_at'] = date('Y-m-d H:i:s');
             
             // Обновление в базе данных
-            $updated = $this->db->update('product_categories', $data, ['id' => $id]);
+            $updated = $this->db->update('product_categories', $data, 'id = ?', [$id]);
             
             if (!$updated) {
                 return Response::error('Ошибка при обновлении категории', 500);
@@ -543,6 +758,8 @@ class ShopController {
                 'message' => 'Категория успешно обновлена'
             ]);
         } catch (\Exception $e) {
+            error_log("ShopController::updateCategory - ошибка: " . $e->getMessage());
+            error_log("Trace: " . $e->getTraceAsString());
             return Response::error($e->getMessage(), 500);
         }
     }

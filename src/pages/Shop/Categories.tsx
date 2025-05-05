@@ -11,6 +11,7 @@ interface Category {
   products_count?: number;
   status: string;
   children?: Category[];
+  description?: string;
 }
 
 // Интерфейс для модальной формы
@@ -110,7 +111,7 @@ const ShopCategories: React.FC = () => {
     name: '',
     slug: '',
     parent_id: null,
-    status: 'active',
+    status: 'published',
     description: ''
   });
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
@@ -172,7 +173,7 @@ const ShopCategories: React.FC = () => {
       name: '',
       slug: '',
       parent_id: null,
-      status: 'active',
+      status: 'published',
       description: ''
     });
     setFormErrors({});
@@ -185,16 +186,40 @@ const ShopCategories: React.FC = () => {
     try {
       setSubmitLoading(true);
       
-      // Загружаем полные данные о категории
-      const response = await shopAPI.getCategory(id);
-      const category = response.data;
+      // Находим категорию по ID (сначала ищем в текущем дереве категорий)
+      const findCategoryById = (categories: Category[], id: number): Category | null => {
+        for (const category of categories) {
+          if (category.id === id) {
+            return category;
+          }
+          if (category.children && category.children.length > 0) {
+            const found = findCategoryById(category.children, id);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
       
+      // Сначала попробуем найти категорию в локальных данных
+      let category = findCategoryById(categoryTree, id);
+      
+      // Если не нашли, запрашиваем с сервера
+      if (!category) {
+        const response = await shopAPI.getCategory(id);
+        category = response.data.data;
+      }
+      
+      if (!category) {
+        throw new Error(`Категория с ID ${id} не найдена`);
+      }
+      
+      // Маппинг данных для формы редактирования
       setFormData({
         id: category.id,
         name: category.name,
         slug: category.slug,
         parent_id: category.parent_id,
-        status: category.status,
+        status: category.status, // Будет использовать значения из API
         description: category.description || ''
       });
       
@@ -204,6 +229,7 @@ const ShopCategories: React.FC = () => {
       setSubmitLoading(false);
     } catch (error) {
       console.error('Ошибка при загрузке категории:', error);
+      alert('Не удалось загрузить категорию. Пожалуйста, попробуйте еще раз.');
       setSubmitLoading(false);
     }
   };
@@ -387,11 +413,11 @@ const ShopCategories: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        category.status === 'active' 
+                        category.status === 'published' 
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {category.status === 'active' ? 'Активна' : 'Неактивна'}
+                        {category.status === 'published' ? 'Активна' : 'Неактивна'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

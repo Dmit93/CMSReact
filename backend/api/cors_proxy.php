@@ -4,16 +4,14 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// Разрешаем запросы с любого источника (для разработки)
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+// Подключаем общие функции для работы с CORS
+require_once __DIR__ . '/cors_helpers.php';
 
-// Проверка pre-flight запросов OPTIONS
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
-    header('HTTP/1.1 200 OK');
-    exit;
-}
+// Устанавливаем заголовки CORS
+setCorsHeaders();
+
+// Обработка предварительного запроса OPTIONS
+handleOptionsRequest();
 
 // Получаем путь запроса
 $requestPath = $_SERVER['REQUEST_URI'];

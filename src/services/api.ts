@@ -367,29 +367,47 @@ export const shopAPI = {
   },
   
   createProduct: (data: any) => {
-    // Используем CORS proxy для обхода проблем с CORS
-    console.log('Отправка запроса на создание товара с данными:', data);
-
-    // Определяем URL CORS proxy
-    const proxyUrl = 'http://localhost/cms/backend/api/cors_proxy.php/shop/products';
-    console.log('Используем CORS proxy:', proxyUrl);
+    // Базовые обязательные поля
+    const productData = {
+      ...data,
+      // Автоматическое назначение необходимых полей
+      author_id: data.author_id || 1, // ID автора по умолчанию
+      slug: data.slug || (data.title ? data.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') : 'product-' + Date.now()),
+      // Даты в правильном формате
+      created_at: data.created_at || new Date().toISOString().slice(0, 19).replace('T', ' '),
+      updated_at: data.updated_at || new Date().toISOString().slice(0, 19).replace('T', ' ')
+    };
     
-    // Отправляем запрос с использованием прямого вызова axios
-    return axios({
-      method: 'post',
-      url: proxyUrl,
-      data: data,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    }).catch(error => {
-      console.error('Ошибка при создании товара:', error);
-      if (error.response) {
-        console.error('Статус ответа:', error.response.status);
-        console.error('Данные ответа:', error.response.data);
-      }
-      throw error;
-    });
+    console.log('Отправка запроса на создание товара с данными:', productData);
+    
+    // Отправляем запрос, включая полное отслеживание ошибок
+    return apiClient.post('/shop/products', productData)
+      .then(response => {
+        console.log('Успешный ответ от создания товара:', response.data);
+        return response;
+      })
+      .catch(error => {
+        console.error('Ошибка при создании товара:', error);
+        
+        // Детальная диагностика ошибки
+        if (error.response) {
+          console.error('Данные ответа:', error.response.data);
+          console.error('Статус:', error.response.status);
+          console.error('Заголовки:', error.response.headers);
+          
+          // Проверяем информацию о дублировании заголовков CORS
+          const corsHeaders = error.response.headers['access-control-allow-origin'];
+          if (corsHeaders && corsHeaders.includes(',')) {
+            console.error('Обнаружены множественные заголовки CORS:', corsHeaders);
+          }
+        } else if (error.request) {
+          console.error('Запрос был сделан, но ответ не получен:', error.request);
+        } else {
+          console.error('Ошибка при настройке запроса:', error.message);
+        }
+        
+        throw error;
+      });
   },
   
   updateProduct: (id: number, data: any) => {

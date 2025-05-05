@@ -65,7 +65,7 @@ class ProductModel {
                         `slug` varchar(255) NOT NULL,
                         `parent_id` int(11) DEFAULT NULL,
                         `description` text DEFAULT NULL,
-                        `status` varchar(20) NOT NULL DEFAULT 'active',
+                        `status` varchar(20) NOT NULL DEFAULT 'published',
                         `created_at` datetime NOT NULL,
                         `updated_at` datetime NOT NULL,
                         PRIMARY KEY (`id`),
@@ -132,21 +132,21 @@ class ProductModel {
                     [
                         'name' => 'Электроника',
                         'slug' => 'electronics',
-                        'status' => 'active',
+                        'status' => 'published',
                         'created_at' => date('Y-m-d H:i:s'),
                         'updated_at' => date('Y-m-d H:i:s')
                     ],
                     [
                         'name' => 'Одежда',
                         'slug' => 'clothing',
-                        'status' => 'active',
+                        'status' => 'published',
                         'created_at' => date('Y-m-d H:i:s'),
                         'updated_at' => date('Y-m-d H:i:s')
                     ],
                     [
                         'name' => 'Книги',
                         'slug' => 'books',
-                        'status' => 'active',
+                        'status' => 'published',
                         'created_at' => date('Y-m-d H:i:s'),
                         'updated_at' => date('Y-m-d H:i:s')
                     ]
@@ -460,46 +460,64 @@ class ProductModel {
     }
     
     /**
-     * Создание товара
-     * 
-     * @param array $data Данные товара
-     * @return int ID созданного товара или false
+     * Создание нового товара
      */
     public function create($data) {
         try {
-            // Подробное логирование
-            error_log("ProductModel::create вызван с данными: " . json_encode($data));
+            error_log("ProductModel::create - начало создания товара с данными: " . json_encode($data));
             
-            // Добавляем метки времени
-            $data['created_at'] = date('Y-m-d H:i:s');
-            $data['updated_at'] = date('Y-m-d H:i:s');
-            
-            // Проверим обязательные поля
+            // Проверяем обязательные поля
             $requiredFields = ['title', 'sku', 'price'];
-            $missingFields = [];
             foreach ($requiredFields as $field) {
-                if (!isset($data[$field]) || empty($data[$field])) {
-                    $missingFields[] = $field;
+                if (!isset($data[$field]) || $data[$field] === '') {
+                    error_log("ProductModel::create - отсутствует обязательное поле: " . $field);
+                    return false;
                 }
             }
             
-            if (count($missingFields) > 0) {
-                error_log("ProductModel::create - отсутствуют обязательные поля: " . implode(', ', $missingFields));
-                return false;
+            // Устанавливаем значения по умолчанию
+            if (!isset($data['created_at'])) {
+                $data['created_at'] = date('Y-m-d H:i:s');
             }
             
-            // Проверим, что статус допустим
-            if (isset($data['status']) && !in_array($data['status'], ['draft', 'published', 'archived'])) {
-                error_log("ProductModel::create - некорректный статус: " . $data['status'] . ", меняем на 'published'");
-                $data['status'] = 'published';
+            if (!isset($data['updated_at'])) {
+                $data['updated_at'] = date('Y-m-d H:i:s');
             }
             
-            // Извлекаем категории, если они есть
+            if (!isset($data['slug']) && isset($data['title'])) {
+                $data['slug'] = $this->generateSlug($data['title']);
+                error_log("ProductModel::create - генерация slug: " . $data['slug']);
+            }
+            
+            // Извлекаем категории, если они указаны
             $categories = [];
-            if (isset($data['categories'])) {
+            if (isset($data['categories']) && is_array($data['categories'])) {
                 $categories = $data['categories'];
                 unset($data['categories']);
                 error_log("ProductModel::create - извлечены категории: " . json_encode($categories));
+            }
+            
+            if (isset($data['category_id']) && $data['category_id']) {
+                // Убедимся, что category_id это число
+                $data['category_id'] = (int)$data['category_id'];
+                
+                // Добавляем в список категорий, если его еще нет там
+                if (!in_array($data['category_id'], $categories)) {
+                    $categories[] = $data['category_id'];
+                    error_log("ProductModel::create - добавлена категория из category_id: " . $data['category_id']);
+                }
+                
+                // category_id не нужен в данных продукта, так как связь будет в таблице product_category
+                unset($data['category_id']);
+            }
+            
+            // Убедимся, что числовые поля имеют правильный тип
+            if (isset($data['price'])) {
+                $data['price'] = (float)$data['price'];
+            }
+            
+            if (isset($data['stock'])) {
+                $data['stock'] = (int)$data['stock'];
             }
             
             // Извлекаем галерею, если она есть
@@ -510,52 +528,122 @@ class ProductModel {
                 error_log("ProductModel::create - извлечена галерея: " . json_encode($gallery));
             }
             
-            // Фильтруем данные, оставляя только поля, существующие в таблице
-            $filteredData = [];
-            $columns = $this->db->fetchAll("SHOW COLUMNS FROM products");
-            $columnNames = array_column($columns, 'Field');
+            // Проверяем структуру таблицы products
+            try {
+                $this->checkProductsTableExists();
+            } catch (\Exception $e) {
+                error_log("ProductModel::create - ошибка при проверке таблицы: " . $e->getMessage());
+                throw $e;
+            }
             
-            foreach ($data as $key => $value) {
-                if (in_array($key, $columnNames)) {
-                    $filteredData[$key] = $value;
-                    error_log("ProductModel::create - поле $key добавлено");
-                } else {
-                    error_log("ProductModel::create - поле $key пропущено (не существует в таблице)");
+            // Фильтруем данные, оставляя только поля, существующие в таблице
+            try {
+                $columns = $this->db->fetchAll("SHOW COLUMNS FROM products");
+                if (!is_array($columns)) {
+                    error_log("ProductModel::create - ошибка: не удалось получить структуру таблицы products");
+                    throw new \Exception("Не удалось получить структуру таблицы products");
+                }
+                
+                $columnNames = array_column($columns, 'Field');
+                
+                $filteredData = [];
+                foreach ($data as $key => $value) {
+                    if (in_array($key, $columnNames)) {
+                        $filteredData[$key] = $value;
+                        error_log("ProductModel::create - поле $key добавлено");
+                    } else {
+                        error_log("ProductModel::create - поле $key пропущено (не существует в таблице)");
+                    }
+                }
+                
+                // Проверка на пустые данные после фильтрации
+                if (empty($filteredData)) {
+                    error_log("ProductModel::create - ошибка: после фильтрации не осталось данных");
+                    throw new \Exception("После фильтрации полей не осталось данных для вставки");
+                }
+                
+                error_log("ProductModel::create - финальные данные для вставки: " . json_encode($filteredData));
+            } catch (\Exception $e) {
+                error_log("ProductModel::create - ошибка при фильтрации данных: " . $e->getMessage());
+                throw $e;
+            }
+            
+            // Проверяем наличие обязательных полей после фильтрации
+            foreach ($requiredFields as $field) {
+                if (!isset($filteredData[$field])) {
+                    error_log("ProductModel::create - ошибка: обязательное поле $field отсутствует в фильтрованных данных");
+                    throw new \Exception("Обязательное поле $field отсутствует в фильтрованных данных");
                 }
             }
             
-            error_log("ProductModel::create - финальные данные для вставки: " . json_encode($filteredData));
-            
-            // Вставляем запись товара
-            $productId = $this->db->insert('products', $filteredData);
-            
-            if (!$productId) {
-                error_log("ProductModel::create - ошибка при вставке товара в БД");
-                return false;
+            // Проверяем, что SKU уникален
+            try {
+                $existingSku = $this->db->fetch("SELECT id FROM products WHERE sku = ?", [$filteredData['sku']]);
+                if ($existingSku) {
+                    error_log("ProductModel::create - ошибка: товар с SKU {$filteredData['sku']} уже существует");
+                    throw new \Exception("Товар с артикулом (SKU) {$filteredData['sku']} уже существует");
+                }
+            } catch (\Exception $e) {
+                if (strpos($e->getMessage(), "уже существует") !== false) {
+                    throw $e;
+                }
+                error_log("ProductModel::create - ошибка при проверке уникальности SKU: " . $e->getMessage());
+                throw new \Exception("Ошибка при проверке уникальности артикула: " . $e->getMessage());
             }
             
-            error_log("ProductModel::create - товар успешно создан с ID: " . $productId);
+            // Вставляем запись товара
+            try {
+                $productId = $this->db->insert('products', $filteredData);
+                
+                if (!$productId) {
+                    error_log("ProductModel::create - ошибка при вставке товара в БД");
+                    throw new \Exception("Ошибка при вставке товара в базу данных");
+                }
+                
+                error_log("ProductModel::create - товар успешно создан с ID: " . $productId);
+            } catch (\Exception $e) {
+                error_log("ProductModel::create - ошибка при вставке в БД: " . $e->getMessage());
+                throw new \Exception("Ошибка при вставке товара: " . $e->getMessage());
+            }
             
             // Добавляем связи с категориями
             if (!empty($categories)) {
-                foreach ($categories as $categoryId) {
-                    $this->db->insert('product_category', [
-                        'product_id' => $productId,
-                        'category_id' => $categoryId
-                    ]);
-                    error_log("ProductModel::create - добавлена связь с категорией: " . $categoryId);
+                try {
+                    foreach ($categories as $categoryId) {
+                        // Проверяем валидность идентификатора категории
+                        if (!is_numeric($categoryId) || $categoryId <= 0) {
+                            error_log("ProductModel::create - пропускаем невалидный ID категории: " . $categoryId);
+                            continue;
+                        }
+                        
+                        $this->db->insert('product_category', [
+                            'product_id' => $productId,
+                            'category_id' => (int)$categoryId
+                        ]);
+                        error_log("ProductModel::create - добавлена связь с категорией: " . $categoryId);
+                    }
+                } catch (\Exception $e) {
+                    // Не выбрасываем исключение, так как товар уже создан,
+                    // просто логируем ошибку
+                    error_log("ProductModel::create - ошибка при добавлении категорий: " . $e->getMessage());
                 }
             }
             
             // Добавляем изображения в галерею
             if (!empty($gallery)) {
-                foreach ($gallery as $index => $mediaId) {
-                    $this->db->insert('product_media', [
-                        'product_id' => $productId,
-                        'media_id' => $mediaId,
-                        'sort_order' => $index
-                    ]);
-                    error_log("ProductModel::create - добавлена связь с медиа: " . $mediaId);
+                try {
+                    foreach ($gallery as $index => $mediaId) {
+                        $this->db->insert('product_media', [
+                            'product_id' => $productId,
+                            'media_id' => $mediaId,
+                            'sort_order' => $index
+                        ]);
+                        error_log("ProductModel::create - добавлена связь с медиа: " . $mediaId);
+                    }
+                } catch (\Exception $e) {
+                    // Не выбрасываем исключение, так как товар уже создан,
+                    // просто логируем ошибку
+                    error_log("ProductModel::create - ошибка при добавлении медиа: " . $e->getMessage());
                 }
             }
             
@@ -564,10 +652,170 @@ class ProductModel {
             // Возвращаем ID созданного товара
             return $productId;
         } catch (\Exception $e) {
-            error_log("ProductModel::create - ошибка: " . $e->getMessage());
+            error_log("ProductModel::create - КРИТИЧЕСКАЯ ОШИБКА: " . $e->getMessage());
             error_log("ProductModel::create - trace: " . $e->getTraceAsString());
+            throw $e; // Пробрасываем исключение дальше для обработки в контроллере
+        }
+    }
+    
+    /**
+     * Проверка существования таблицы products и создание её при необходимости
+     */
+    private function checkProductsTableExists() {
+        try {
+            // Проверяем, существует ли таблица products
+            $tableCheckQuery = "SHOW TABLES LIKE 'products'";
+            $tableExists = (bool)$this->db->fetch($tableCheckQuery);
+            
+            if (!$tableExists) {
+                error_log("ProductModel: Таблица products не существует, создаем...");
+                
+                // Создаем таблицу products
+                $createQuery = "
+                    CREATE TABLE IF NOT EXISTS `products` (
+                        `id` int(11) NOT NULL AUTO_INCREMENT,
+                        `title` varchar(255) NOT NULL,
+                        `slug` varchar(255) DEFAULT NULL,
+                        `sku` varchar(50) NOT NULL,
+                        `description` text DEFAULT NULL,
+                        `price` decimal(10,2) NOT NULL DEFAULT 0.00,
+                        `sale_price` decimal(10,2) DEFAULT NULL,
+                        `stock` int(11) NOT NULL DEFAULT 0,
+                        `featured` tinyint(1) NOT NULL DEFAULT 0,
+                        `status` varchar(20) NOT NULL DEFAULT 'published',
+                        `views` int(11) NOT NULL DEFAULT 0,
+                        `created_at` datetime NOT NULL,
+                        `updated_at` datetime NOT NULL,
+                        PRIMARY KEY (`id`),
+                        UNIQUE KEY `sku` (`sku`),
+                        KEY `status` (`status`),
+                        KEY `slug` (`slug`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                ";
+                
+                $this->db->query($createQuery);
+                error_log("ProductModel: Таблица products успешно создана");
+                
+                // Проверяем таблицу категорий и создаем при необходимости
+                $categoryTableCheckQuery = "SHOW TABLES LIKE 'product_categories'";
+                $categoryTableExists = (bool)$this->db->fetch($categoryTableCheckQuery);
+                
+                if (!$categoryTableExists) {
+                    error_log("ProductModel: Таблица product_categories не существует, создаем...");
+                    
+                    $createCategoryTableQuery = "
+                        CREATE TABLE IF NOT EXISTS `product_categories` (
+                            `id` int(11) NOT NULL AUTO_INCREMENT,
+                            `title` varchar(255) NOT NULL,
+                            `slug` varchar(255) NOT NULL,
+                            `description` text DEFAULT NULL,
+                            `parent_id` int(11) DEFAULT NULL,
+                            `position` int(11) DEFAULT 0,
+                            `created_at` datetime NOT NULL,
+                            `updated_at` datetime NOT NULL,
+                            PRIMARY KEY (`id`),
+                            UNIQUE KEY `slug` (`slug`),
+                            KEY `parent_id` (`parent_id`)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    ";
+                    
+                    $this->db->query($createCategoryTableQuery);
+                    error_log("ProductModel: Таблица product_categories успешно создана");
+                }
+                
+                // Проверяем таблицу связей товаров и категорий
+                $productCategoryTableCheckQuery = "SHOW TABLES LIKE 'product_category'";
+                $productCategoryTableExists = (bool)$this->db->fetch($productCategoryTableCheckQuery);
+                
+                if (!$productCategoryTableExists) {
+                    error_log("ProductModel: Таблица product_category не существует, создаем...");
+                    
+                    $createProductCategoryTableQuery = "
+                        CREATE TABLE IF NOT EXISTS `product_category` (
+                            `product_id` int(11) NOT NULL,
+                            `category_id` int(11) NOT NULL,
+                            KEY `product_id` (`product_id`),
+                            KEY `category_id` (`category_id`)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    ";
+                    
+                    $this->db->query($createProductCategoryTableQuery);
+                    error_log("ProductModel: Таблица product_category успешно создана");
+                }
+                
+                // Проверяем таблицу связей товаров и медиа
+                $productMediaTableCheckQuery = "SHOW TABLES LIKE 'product_media'";
+                $productMediaTableExists = (bool)$this->db->fetch($productMediaTableCheckQuery);
+                
+                if (!$productMediaTableExists) {
+                    error_log("ProductModel: Таблица product_media не существует, создаем...");
+                    
+                    $createProductMediaTableQuery = "
+                        CREATE TABLE IF NOT EXISTS `product_media` (
+                            `product_id` int(11) NOT NULL,
+                            `media_id` int(11) NOT NULL,
+                            `sort_order` int(11) NOT NULL DEFAULT 0,
+                            KEY `product_id` (`product_id`),
+                            KEY `media_id` (`media_id`)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    ";
+                    
+                    $this->db->query($createProductMediaTableQuery);
+                    error_log("ProductModel: Таблица product_media успешно создана");
+                }
+            } else {
+                error_log("ProductModel: Таблица products уже существует");
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("ProductModel::checkProductsTableExists - ошибка: " . $e->getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Генерация уникального slug
+     */
+    private function generateSlug($title) {
+        // Транслитерация и преобразование в нижний регистр
+        $slug = mb_strtolower($title);
+        
+        // Заменяем все символы, кроме букв, цифр и "-" на "-"
+        $slug = preg_replace('/[^a-zA-Z0-9а-яА-Я]+/u', '-', $slug);
+        
+        // Удаляем начальные и конечные "-"
+        $slug = trim($slug, '-');
+        
+        // Транслитерация с русского на английский
+        $converter = [
+            'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'g', 'д' => 'd',
+            'е' => 'e', 'ё' => 'e', 'ж' => 'zh', 'з' => 'z', 'и' => 'i',
+            'й' => 'y', 'к' => 'k', 'л' => 'l', 'м' => 'm', 'н' => 'n',
+            'о' => 'o', 'п' => 'p', 'р' => 'r', 'с' => 's', 'т' => 't',
+            'у' => 'u', 'ф' => 'f', 'х' => 'h', 'ц' => 'c', 'ч' => 'ch',
+            'ш' => 'sh', 'щ' => 'sch', 'ъ' => '', 'ы' => 'y', 'ь' => '',
+            'э' => 'e', 'ю' => 'yu', 'я' => 'ya'
+        ];
+        
+        $slug = strtr($slug, $converter);
+        
+        // Проверяем, существует ли уже товар с таким slug
+        $baseSlug = $slug;
+        $counter = 1;
+        
+        while (true) {
+            $existingProduct = $this->db->fetch("SELECT id FROM products WHERE slug = ?", [$slug]);
+            
+            if (!$existingProduct) {
+                break;
+            }
+            
+            $slug = $baseSlug . '-' . $counter;
+            $counter++;
+        }
+        
+        return $slug;
     }
     
     /**

@@ -400,11 +400,13 @@ const ShopProducts: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      product.status === 'active' 
+                      product.status === 'published' 
                         ? 'bg-green-100 text-green-800' 
+                        : product.status === 'draft'
+                        ? 'bg-yellow-100 text-yellow-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}>
-                      {product.status === 'active' ? 'Активен' : 'Неактивен'}
+                      {product.status === 'published' ? 'Активен' : product.status === 'draft' ? 'Черновик' : 'Архивный'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -544,8 +546,9 @@ const ShopProducts: React.FC = () => {
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                 >
-                  <option value="active">Активен</option>
-                  <option value="inactive">Неактивен</option>
+                  <option value="published">Активен</option>
+                  <option value="draft">Неактивен</option>
+                  <option value="archived">Архивный</option>
                 </select>
               </div>
 

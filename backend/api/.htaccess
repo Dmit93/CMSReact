@@ -1,11 +1,7 @@
 # Включаем перезапись URL
 RewriteEngine On
 
-# Обработка CORS
-Header always set Access-Control-Allow-Origin "http://localhost:5173"
-Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
-Header always set Access-Control-Allow-Credentials "true"
+# CORS обрабатывается в backend/api/cors_helpers.php, удаляем отсюда
 
 # Если это OPTIONS запрос, возвращаем 200 OK без дальнейшей обработки
 RewriteCond %{REQUEST_METHOD} OPTIONS

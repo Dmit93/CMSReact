@@ -61,12 +61,8 @@ class Router {
             
             // CORS для предварительных запросов OPTIONS
             if ($method === 'OPTIONS') {
-                $this->handleCors($config);
-                exit;
+                exit; // Это обрабатывается в index.php
             }
-            
-            // Добавляем CORS-заголовки ко всем ответам
-            $this->handleCors($config);
             
             // Получаем данные из тела запроса для POST, PUT и DELETE запросов
             $requestData = null;
@@ -442,33 +438,7 @@ class Router {
     }
     
     private function handleCors($config) {
-        $cors = $config['cors'];
-        $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
-
-        error_log("CORS: Handling CORS for origin: " . ($origin ?? "none"));
-        
-        // Полностью очищаем все CORS заголовки перед установкой новых
-        header_remove('Access-Control-Allow-Origin');
-        header_remove('Access-Control-Allow-Methods');
-        header_remove('Access-Control-Allow-Headers');
-        header_remove('Access-Control-Allow-Credentials');
-        header_remove('Access-Control-Max-Age');
-    
-        // Добавляем заголовок только если запрос содержит Origin
-        if ($origin) {
-            // Для любого запроса устанавливаем конкретный Origin
-            error_log("CORS: Setting allowed origin to: " . $origin);
-            header("Access-Control-Allow-Origin: " . $origin);
-            header("Access-Control-Allow-Credentials: true");
-        } else {
-            // Если Origin отсутствует, используем звездочку
-            error_log("CORS: No origin in request, using *");
-            header("Access-Control-Allow-Origin: *");
-        }
-    
-        // Остальные заголовки
-        header("Access-Control-Allow-Methods: " . implode(', ', $cors['allowed_methods']));
-        header("Access-Control-Allow-Headers: " . implode(', ', $cors['allowed_headers']));
-        header("Access-Control-Max-Age: 86400");
+        // Пустой метод, так как CORS заголовки должны обрабатываться только в index.php
+        return;
     }
 } 

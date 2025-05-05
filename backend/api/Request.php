@@ -9,6 +9,7 @@ class Request {
     private $body;
     private $method;
     private $headers;
+    private $jsonData = null;
     
     /**
      * Конструктор
@@ -67,12 +68,41 @@ class Request {
     }
     
     /**
-     * Получение JSON-данных из тела запроса
+     * Получение данных из JSON тела запроса
      * 
-     * @return array|null Данные в формате ассоциативного массива или null в случае ошибки
+     * @return array|null Декодированные данные или null
      */
     public function getJson() {
-        return $this->body;
+        // Если у нас уже есть декодированные JSON-данные, возвращаем их
+        if ($this->jsonData !== null) {
+            return $this->jsonData;
+        }
+        
+        // Получаем содержимое тела запроса
+        $rawData = file_get_contents('php://input');
+        
+        // Для отладки CORS и проблем с JSON
+        error_log("Request::getJson - сырые данные: " . $rawData);
+        
+        if (empty($rawData)) {
+            error_log("Request::getJson - пустое тело запроса");
+            return null;
+        }
+        
+        // Пытаемся декодировать JSON
+        $data = json_decode($rawData, true);
+        
+        if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+            error_log("Request::getJson - Ошибка декодирования JSON: " . json_last_error_msg());
+            error_log("Request::getJson - Сырые данные запроса: " . $rawData);
+            return null;
+        }
+        
+        // Сохраняем декодированные данные
+        $this->jsonData = $data;
+        error_log("Request::getJson - успешное декодирование JSON: " . json_encode($data));
+        
+        return $data;
     }
     
     /**

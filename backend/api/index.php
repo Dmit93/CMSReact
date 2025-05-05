@@ -1,25 +1,58 @@
 <?php
+// Запрещаем буферизацию вывода для немедленного получения ошибок
+ob_end_clean();
+
 // Включаем отображение ошибок в режиме разработки
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// Устанавливаем CORS заголовки напрямую для предотвращения проблем
-// Убедимся, что заголовки не дублируются
-if (isset($_SERVER['HTTP_ORIGIN'])) {
-    header("Access-Control-Allow-Origin: {$_SERVER['HTTP_ORIGIN']}");
-} else {
-    header("Access-Control-Allow-Origin: *");
-}
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Access-Control-Allow-Credentials: true");
-header("Access-Control-Max-Age: 86400"); // 1 день
+// Добавляем дополнительное логирование для отладки
+error_log("=== Начало обработки запроса: " . date('Y-m-d H:i:s') . " ===");
+error_log("Метод: " . $_SERVER['REQUEST_METHOD']);
+error_log("URI: " . $_SERVER['REQUEST_URI']);
+error_log("Content-Type: " . ($_SERVER['CONTENT_TYPE'] ?? 'не указан'));
+error_log("Origin: " . ($_SERVER['HTTP_ORIGIN'] ?? 'не указан'));
 
-// Обработка предварительного запроса OPTIONS
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
-    header("HTTP/1.1 200 OK");
-    exit;
+// Логирование тела запроса для POST/PUT
+if ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'PUT') {
+    $rawData = file_get_contents('php://input');
+    $truncatedData = (strlen($rawData) > 1000) ? substr($rawData, 0, 1000) . '...[truncated]' : $rawData;
+    error_log("Тело запроса: " . $truncatedData);
+    
+    $jsonData = json_decode($rawData, true);
+    if ($jsonData !== null) {
+        error_log("Данные JSON декодированы успешно");
+    } else if ($rawData) {
+        error_log("Ошибка декодирования JSON: " . json_last_error_msg());
+    }
+}
+
+// Подключаем общие функции для работы с CORS
+require_once __DIR__ . '/cors_helpers.php';
+
+// ВАЖНО: Устанавливаем CORS заголовки ОДИН раз в самом начале обработки запроса
+// Больше нигде в коде не должно быть установки CORS заголовков
+setCorsHeaders();
+
+// Обработка предварительного запроса OPTIONS для CORS
+handleOptionsRequest();
+
+// Проверяем, есть ли дублирование заголовков CORS в ответе
+$headers = headers_list();
+$corsHeaders = [];
+foreach ($headers as $header) {
+    if (strpos($header, 'Access-Control-') === 0) {
+        $parts = explode(':', $header, 2);
+        $name = trim($parts[0]);
+        $corsHeaders[$name][] = trim($parts[1] ?? '');
+    }
+}
+
+foreach ($corsHeaders as $name => $values) {
+    if (count($values) > 1) {
+        error_log("ВНИМАНИЕ: Обнаружено дублирование заголовка $name: " . implode(', ', $values));
+    }
 }
 
 // Инициализация ядра CMS

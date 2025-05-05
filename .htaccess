@@ -54,17 +54,8 @@ RewriteRule . index.php [L]
     ExpiresDefault "access plus 2 days"
 </IfModule>
 
-# Обработка CORS для всех запросов
+# CORS обрабатывается в backend/api/cors_helpers.php, удаляем отсюда
 <IfModule mod_headers.c>
-    # Разрешаем доступ с localhost:5173
-    SetEnvIf Origin "http://localhost:5173" AccessControlAllowOrigin=$0
-    Header add Access-Control-Allow-Origin %{AccessControlAllowOrigin}e env=AccessControlAllowOrigin
-    
-    # Разрешенные методы и заголовки
-    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
-    Header always set Access-Control-Allow-Credentials "true"
-    
     # Если это предварительный запрос OPTIONS, возвращаем сразу 200 OK
     RewriteCond %{REQUEST_METHOD} OPTIONS
     RewriteRule ^(.*)$ $1 [R=200,L]

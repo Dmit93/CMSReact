@@ -3,27 +3,14 @@
 error_reporting(0);
 ini_set('display_errors', 0);
 
-// Очищаем все существующие CORS заголовки
-foreach (headers_list() as $header) {
-    if (strpos($header, 'Access-Control-') === 0) {
-        $header_name = strstr($header, ':', true);
-        if ($header_name) {
-            header_remove($header_name);
-        }
-    }
-}
+// Подключаем общие функции для работы с CORS
+require_once __DIR__ . '/cors_helpers.php';
 
-// Устанавливаем только один CORS заголовок
-header('Access-Control-Allow-Origin: http://localhost:5173');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
-header('Access-Control-Allow-Credentials: true');
+// Устанавливаем заголовки CORS
+setCorsHeaders();
 
-// Обработка OPTIONS запроса
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header('HTTP/1.1 200 OK');
-    exit;
-}
+// Обработка предварительного запроса OPTIONS
+handleOptionsRequest();
 
 // Получаем целевой путь
 $target_path = str_replace('/cms/backend/api/simple_proxy.php', '', $_SERVER['REQUEST_URI']);
